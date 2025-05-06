@@ -7,8 +7,7 @@ import json
 import subprocess
 from enum import Enum
 from flask import Flask, request, jsonify, send_file
-import google.generativeai as genai
-from google.generativeai.types import HarmCategory, HarmBlockThreshold
+from lyrics_generators import create_lyrics_generator, LyricsGenerator
 
 class Status(Enum):
     QUEUED = "queued"
@@ -95,32 +94,50 @@ def save_results():
     except Exception as e:
         print(f"Error saving results to {RESULTS_FILE}: {e}")
 
-# Configure Gemini API
+# Configure API clients
 config_path = os.path.join(BASE_DIR, 'config.json')
 print(f"\nLooking for config file at: {config_path}")
 print(f"Config file exists: {os.path.exists(config_path)}")
+
+# Default provider is Anthropic
+lyrics_provider = "anthropic"
+google_api_key = None
+anthropic_api_key = None
 
 if os.path.exists(config_path):
     print("Found config.json, attempting to read...")
     with open(config_path) as f:
         config = json.load(f)
-        api_key = config.get('google_api_key')
-        print(f"API key found in config: {'Yes' if api_key else 'No'}")
+        google_api_key = config.get('google_api_key')
+        anthropic_api_key = config.get('anthropic_api_key')
+        lyrics_provider = config.get('lyrics_provider', 'anthropic').lower()
+        print(f"Google API key found in config: {'Yes' if google_api_key else 'No'}")
+        print(f"Anthropic API key found in config: {'Yes' if anthropic_api_key else 'No'}")
+        print(f"Using lyrics provider: {lyrics_provider}")
 else:
-    print("Config file not found, checking environment variable...")
-    api_key = os.getenv('GOOGLE_API_KEY')
-    print(f"API key found in environment: {'Yes' if api_key else 'No'}")
+    print("Config file not found, checking environment variables...")
+    google_api_key = os.getenv('GOOGLE_API_KEY')
+    anthropic_api_key = os.getenv('ANTHROPIC_API_KEY')
+    lyrics_provider = os.getenv('LYRICS_PROVIDER', 'anthropic').lower()
+    print(f"Google API key found in environment: {'Yes' if google_api_key else 'No'}")
+    print(f"Anthropic API key found in environment: {'Yes' if anthropic_api_key else 'No'}")
+    print(f"Using lyrics provider: {lyrics_provider}")
 
-if not api_key:
-    raise ValueError("Google API key not found. Please set it in config.json or as GOOGLE_API_KEY environment variable.")
+# Initialize the appropriate lyrics generator
+if lyrics_provider == 'gemini':
+    if not google_api_key:
+        raise ValueError("Gemini provider selected but Google API key not found. Please set it in config.json or as GOOGLE_API_KEY environment variable.")
+    api_key = google_api_key
+elif lyrics_provider == 'anthropic':
+    if not anthropic_api_key:
+        raise ValueError("Anthropic provider selected but Anthropic API key not found. Please set it in config.json or as ANTHROPIC_API_KEY environment variable.")
+    api_key = anthropic_api_key
+else:
+    raise ValueError(f"Unsupported lyrics provider: {lyrics_provider}. Supported: 'gemini', 'anthropic'")
 
-print("Configuring Gemini API...")
-genai.configure(api_key=api_key)
-
-# Configure the model
-print("Initializing model...")
-model = genai.GenerativeModel('gemini-2.0-flash')
-print("Model initialized")
+print(f"Initializing {lyrics_provider} lyrics generator...")
+lyrics_generator = create_lyrics_generator(lyrics_provider, api_key)
+print(f"Lyrics generator initialized using {lyrics_provider}")
 
 # Load top 200 tags
 with open(os.path.join(YUE_DIR, 'top_200_tags.json')) as f:
@@ -170,57 +187,28 @@ def find_closest_genre(genre):
     return 'pop'
 
 def generate_lyrics_with_gemini(prompt):
-    """Generate song lyrics using Gemini AI based on the prompt"""
+    """Generate song lyrics using the configured lyrics generator based on the prompt"""
     # Get the current lyrics prompt from file or use default
-    lyrics_prompt = DEFAULT_LYRICS_PROMPT
-    try:
-        if os.path.exists(LYRICS_PROMPT_FILE):
-            with open(LYRICS_PROMPT_FILE, 'r') as f:
-                saved_prompt = f.read()
-                if saved_prompt.strip():
-                    lyrics_prompt = saved_prompt
-    except Exception as e:
-        print(f"Error loading lyrics prompt file: {e}")
+    lyrics_prompt = lyrics_generator.read_lyrics_prompt(LYRICS_PROMPT_FILE, DEFAULT_LYRICS_PROMPT)
     
     print("Starting lyrics generation...")
     try:
-        response = model.generate_content(
-            f"{lyrics_prompt}\n\nPrompt: {prompt}"
-        )
+        lyrics = lyrics_generator.generate_lyrics(prompt, lyrics_prompt)
         print("Lyrics generated successfully")
-        return response.text
+        return lyrics
     except Exception as e:
         print(f"Detailed error in lyrics generation: {str(e)}")
         raise
 
 def extract_genre_from_prompt(prompt):
-    """Extract or generate a suitable genre from the prompt using Gemini AI"""
+    """Extract or generate a suitable genre from the prompt using the configured generator"""
     # Get the current genre prompt from file
-    custom_genre_prompt = ""
-    try:
-        if os.path.exists(GENRE_PROMPT_FILE):
-            with open(GENRE_PROMPT_FILE, 'r') as f:
-                custom_genre_prompt = f.read()
-    except Exception as e:
-        print(f"Error loading genre prompt file: {e}")
-    
-    # Base genre prompt that will always be used
-    base_prompt = """Based on the given prompt, determine the most suitable musical genre for the song.
-    Respond with just a single word genre (e.g., 'rock', 'pop', 'jazz', 'hiphop', 'blues', etc.).
-    Do not include any explanations or additional text."""
-    
-    # Combine the base prompt and the custom prompt if one exists
-    combined_prompt = base_prompt
-    if custom_genre_prompt.strip():
-        combined_prompt = f"{base_prompt}\n\n{custom_genre_prompt}"
+    genre_prompt = lyrics_generator.read_genre_prompt(GENRE_PROMPT_FILE)
     
     print("Starting genre extraction...")
     try:
-        response = model.generate_content(
-            f"{combined_prompt}\n\nPrompt: {prompt}"
-        )
+        suggested_genre = lyrics_generator.extract_genre(prompt, genre_prompt)
         print("Genre extracted successfully")
-        suggested_genre = response.text.strip().lower()
         matched_genre = find_closest_genre(suggested_genre)
         return matched_genre
     except Exception as e:
@@ -428,7 +416,7 @@ def generate():
 
 @app.route('/generate_track', methods=['POST'])
 def generate_track():
-    """Endpoint to generate a track from a prompt using Gemini for lyrics and genre extraction"""
+    """Endpoint to generate a track from a prompt using the configured lyrics generator for lyrics and genre extraction"""
     request_data = request.json
     print(f"\n=== New track generation request ===")
     print(f"Received request data: {json.dumps(request_data, indent=2)}")
@@ -442,7 +430,7 @@ def generate_track():
     
     try:
         print("\nStarting lyrics and genre generation...")
-        # Generate lyrics and extract genre using Gemini
+        # Generate lyrics and extract genre using configured provider
         lyrics = generate_lyrics_with_gemini(request_data['prompt'])
         genre = extract_genre_from_prompt(request_data['prompt'])
         print(f"Generated lyrics: {lyrics}")
@@ -484,7 +472,8 @@ def generate_track():
             'queued_at': time.time(),
             'estimated_wait_time': queue_position * 60,  # Rough estimate: 60 seconds per request
             'generated_genre': genre,
-            'generated_lyrics': lyrics
+            'generated_lyrics': lyrics,
+            'lyrics_provider': lyrics_provider  # Include the provider used
         }
         save_results()  # Save after adding new request
         print(f"Request {request_id} added to results dictionary")
@@ -502,7 +491,8 @@ def generate_track():
             'queue_position': queue_position,
             'estimated_wait_time': f"~{queue_position * 60} seconds",
             'generated_genre': genre,
-            'generated_lyrics': lyrics
+            'generated_lyrics': lyrics,
+            'lyrics_provider': lyrics_provider  # Include the provider in the response
         })
         
     except Exception as e:
@@ -514,7 +504,7 @@ def generate_track():
 
 @app.route('/generate_lyrics', methods=['POST'])
 def generate_lyrics():
-    """Endpoint to generate only lyrics in the specified format using Gemini"""
+    """Endpoint to generate only lyrics in the specified format using the configured lyrics generator"""
     request_data = request.json
     print(f"\n=== New lyrics generation request ===")
     print(f"Received request data: {json.dumps(request_data, indent=2)}")
@@ -543,6 +533,7 @@ def generate_lyrics():
         response = {
             'lyrics': lyrics,
             'suggested_genre': suggested_genre,
+            'lyrics_provider': lyrics_provider,  # Include the provider used
             'format_explanation': {
                 'structure': [
                     '[verse]',
@@ -714,57 +705,11 @@ def repair_all_requests():
     print(f"Repair complete: {repaired_count} repaired, {failed_count} failed")
     return repaired_count, failed_count
 
-def generate_lyrics_with_genres(prompt, genres):
-    """Generate lyrics that incorporate elements from specified genres"""
-    system_prompt = f"""You are a professional songwriter. Generate song lyrics based on the given prompt that incorporate elements from the following genres: {', '.join(genres)}.
-    The lyrics MUST follow this exact structure and format:
-    - [verse]
-    - [chorus]
-    - [verse]
-    - [chorus]
-    - [bridge]
-    - [outro]
-
-    Each section should be separated by exactly two newlines (\n\n).
-    Within each section, lines should be separated by a single newline (\n).
-    Each section should be marked with its type in square brackets (e.g., [verse], [chorus], etc.).
-    
-    The lyrics should:
-    1. Include typical elements, themes, and style from the specified genres
-    2. Use appropriate vocabulary and metaphors common in these genres
-    3. Follow common rhyme patterns for these genres
-    4. Maintain appropriate tone and mood for these genres
-    
-    Do not include any explanations or additional text - just the lyrics in the specified format."""
-    
-    print(f"Generating lyrics for genres: {genres}")
-    try:
-        response = model.generate_content(
-            f"{system_prompt}\n\nPrompt: {prompt}"
-        )
-        print("Genre-specific lyrics generated successfully")
-        return response.text
-    except Exception as e:
-        print(f"Error in genre-specific lyrics generation: {str(e)}")
-        raise
-
 def infer_genres_from_prompt(prompt):
-    """Infer multiple suitable genres from the prompt using Gemini AI"""
-    system_prompt = """As a music expert, analyze the given prompt and suggest 2-3 most suitable musical genres that would work well together.
-    Consider:
-    1. The theme and mood of the prompt
-    2. Common genre combinations in modern music
-    3. Musical compatibility between genres
-    
-    Respond with ONLY a comma-separated list of genres (e.g., 'rock, electronic, indie').
-    Do not include any explanations or additional text."""
-    
+    """Infer multiple suitable genres from the prompt using the lyrics generator"""
     print("Inferring genres from prompt...")
     try:
-        response = model.generate_content(
-            f"{system_prompt}\n\nPrompt: {prompt}"
-        )
-        suggested_genres = [g.strip().lower() for g in response.text.split(',')]
+        suggested_genres = lyrics_generator.infer_genres(prompt)
         
         # Validate and find closest matches for suggested genres
         validated_genres = []
@@ -785,6 +730,17 @@ def infer_genres_from_prompt(prompt):
     except Exception as e:
         print(f"Error in genre inference: {str(e)}")
         return ['pop']  # Default fallback on error
+
+def generate_lyrics_with_genres(prompt, genres):
+    """Generate lyrics that incorporate elements from specified genres"""
+    print(f"Generating lyrics for genres: {genres}")
+    try:
+        lyrics = lyrics_generator.generate_lyrics_with_genres(prompt, genres)
+        print("Genre-specific lyrics generated successfully")
+        return lyrics
+    except Exception as e:
+        print(f"Error in genre-specific lyrics generation: {str(e)}")
+        raise
 
 @app.route('/generate_lyrics_with_genres', methods=['POST'])
 def generate_lyrics_by_genres():
@@ -888,7 +844,8 @@ def generate_lyrics_by_genres():
             'estimated_wait_time': queue_position * 60,
             'generated_lyrics': lyrics,
             'used_genres': validated_genres,
-            'genres_were_inferred': inferred_genres
+            'genres_were_inferred': inferred_genres,
+            'lyrics_provider': lyrics_provider  # Include the provider used
         }
         save_results()
         print(f"Request {request_id} added to results dictionary")
@@ -906,6 +863,7 @@ def generate_lyrics_by_genres():
             'estimated_wait_time': f"~{queue_position * 60} seconds",
             'lyrics': lyrics,
             'used_genres': validated_genres,
+            'lyrics_provider': lyrics_provider,
             'genres_were_inferred': inferred_genres,
             'download_instructions': {
                 'check_status': f'/result/{request_id}',
@@ -941,24 +899,12 @@ def generate_lyrics_by_genres():
 @app.route('/system_prompt', methods=['GET'])
 def get_system_prompt():
     """Endpoint to get the default system prompt for lyrics generation"""
-    # Read from file each time
-    current_prompt = DEFAULT_LYRICS_PROMPT
-    try:
-        if os.path.exists(LYRICS_PROMPT_FILE):
-            with open(LYRICS_PROMPT_FILE, 'r') as f:
-                saved_prompt = f.read()
-                if saved_prompt.strip():
-                    current_prompt = saved_prompt
-    except Exception as e:
-        print(f"Error reading lyrics prompt file: {e}")
-        return jsonify({
-            'prompt': current_prompt,
-            'error': f"Error reading from file: {str(e)}",
-            'using_default': True
-        }), 200
+    # Read from file each time using the lyrics generator helper
+    current_prompt = lyrics_generator.read_lyrics_prompt(LYRICS_PROMPT_FILE, DEFAULT_LYRICS_PROMPT)
     
     return jsonify({
-        'prompt': current_prompt
+        'prompt': current_prompt,
+        'provider': lyrics_provider
     })
 
 @app.route('/system_prompt', methods=['PUT'])
@@ -975,43 +921,29 @@ def update_system_prompt():
     if not isinstance(new_prompt, str):
         return jsonify({'error': 'Prompt must be a string'}), 400
     
-    # Save the prompt to a file
-    try:
-        with open(LYRICS_PROMPT_FILE, 'w') as f:
-            f.write(new_prompt)
-        print(f"Saved lyrics prompt to {LYRICS_PROMPT_FILE}")
-    except Exception as e:
-        print(f"Error saving lyrics prompt: {e}")
+    # Save the prompt to a file using the lyrics generator helper
+    success = lyrics_generator.write_lyrics_prompt(LYRICS_PROMPT_FILE, new_prompt)
+    
+    if not success:
         return jsonify({
-            'message': 'Failed to save prompt to file',
-            'error': str(e)
+            'message': 'Failed to save prompt to file'
         }), 500
     
     return jsonify({
         'message': 'System prompt updated successfully and saved to file',
-        'prompt': new_prompt
+        'prompt': new_prompt,
+        'provider': lyrics_provider
     })
 
 @app.route('/genre_prompt', methods=['GET'])
 def get_genre_prompt():
     """Endpoint to get the default system prompt for genre extraction"""
-    # Read from file each time
-    current_prompt = DEFAULT_GENRE_PROMPT
-    try:
-        if os.path.exists(GENRE_PROMPT_FILE):
-            with open(GENRE_PROMPT_FILE, 'r') as f:
-                saved_prompt = f.read()
-                current_prompt = saved_prompt
-    except Exception as e:
-        print(f"Error reading genre prompt file: {e}")
-        return jsonify({
-            'prompt': current_prompt,
-            'error': f"Error reading from file: {str(e)}",
-            'using_default': True
-        }), 200
+    # Read from file each time using the lyrics generator helper
+    current_prompt = lyrics_generator.read_genre_prompt(GENRE_PROMPT_FILE, DEFAULT_GENRE_PROMPT)
     
     return jsonify({
-        'prompt': current_prompt
+        'prompt': current_prompt,
+        'provider': lyrics_provider
     })
 
 @app.route('/genre_prompt', methods=['PUT'])
@@ -1028,22 +960,102 @@ def update_genre_prompt():
     if not isinstance(new_prompt, str):
         return jsonify({'error': 'Prompt must be a string'}), 400
     
-    # Save the prompt to a file
-    try:
-        with open(GENRE_PROMPT_FILE, 'w') as f:
-            f.write(new_prompt)
-        print(f"Saved genre prompt to {GENRE_PROMPT_FILE}")
-    except Exception as e:
-        print(f"Error saving genre prompt: {e}")
+    # Save the prompt to a file using the lyrics generator helper
+    success = lyrics_generator.write_genre_prompt(GENRE_PROMPT_FILE, new_prompt)
+    
+    if not success:
         return jsonify({
-            'message': 'Failed to save prompt to file',
-            'error': str(e)
+            'message': 'Failed to save prompt to file'
         }), 500
     
     return jsonify({
         'message': 'Genre prompt updated successfully and saved to file',
-        'prompt': new_prompt
+        'prompt': new_prompt,
+        'provider': lyrics_provider
     })
+
+@app.route('/provider', methods=['GET'])
+def get_provider():
+    """Get the current lyrics provider"""
+    return jsonify({
+        'provider': lyrics_provider,
+        'available_providers': ['gemini', 'anthropic']
+    })
+
+@app.route('/provider', methods=['POST'])
+def set_provider():
+    """Set the lyrics provider to use"""
+    global lyrics_provider, lyrics_generator
+    
+    if not request.is_json:
+        return jsonify({'error': 'Content-Type must be application/json'}), 400
+    
+    data = request.json
+    if 'provider' not in data:
+        return jsonify({'error': 'Missing required field: provider'}), 400
+    
+    new_provider = data['provider'].lower()
+    if new_provider not in ['gemini', 'anthropic']:
+        return jsonify({'error': 'Invalid provider. Supported providers: gemini, anthropic'}), 400
+    
+    # Verify we have the required API key
+    if new_provider == 'gemini' and not google_api_key:
+        return jsonify({
+            'error': 'Cannot switch to Gemini: Google API key not configured',
+            'current_provider': lyrics_provider
+        }), 400
+    
+    if new_provider == 'anthropic' and not anthropic_api_key:
+        return jsonify({
+            'error': 'Cannot switch to Anthropic: Anthropic API key not configured',
+            'current_provider': lyrics_provider
+        }), 400
+    
+    # If requested provider is already active, just return success
+    if new_provider == lyrics_provider:
+        return jsonify({
+            'message': f'Provider {new_provider} is already active',
+            'provider': new_provider
+        })
+    
+    try:
+        # Get the appropriate API key
+        api_key = google_api_key if new_provider == 'gemini' else anthropic_api_key
+        
+        # Initialize the new provider
+        print(f"Switching lyrics provider from {lyrics_provider} to {new_provider}")
+        new_generator = create_lyrics_generator(new_provider, api_key)
+        
+        # Update globals after successful initialization
+        lyrics_provider = new_provider
+        lyrics_generator = new_generator
+        
+        # Save the new provider to config file if it exists
+        try:
+            if os.path.exists(config_path):
+                with open(config_path, 'r') as f:
+                    config = json.load(f)
+                
+                config['lyrics_provider'] = new_provider
+                
+                with open(config_path, 'w') as f:
+                    json.dump(config, f, indent=2)
+                    print(f"Updated config file with new provider: {new_provider}")
+        except Exception as e:
+            print(f"Warning: Could not update config file: {e}")
+        
+        return jsonify({
+            'message': f'Successfully switched provider to {new_provider}',
+            'provider': new_provider
+        })
+    
+    except Exception as e:
+        error_message = f'Error switching provider: {str(e)}'
+        print(f"Error: {error_message}")
+        return jsonify({
+            'error': error_message,
+            'current_provider': lyrics_provider
+        }), 500
 
 if __name__ == '__main__':
     # Create necessary directories
