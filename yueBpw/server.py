@@ -34,38 +34,6 @@ RESULTS_FILE = os.path.join(BASE_DIR, "results.json")
 LYRICS_PROMPT_FILE = os.path.join(BASE_DIR, "lyrics_prompt.txt")
 GENRE_PROMPT_FILE = os.path.join(BASE_DIR, "genre_prompt.txt")
 
-# Default system prompt for lyrics generation
-DEFAULT_LYRICS_PROMPT = """You are a professional songwriter. Generate song lyrics based on the given prompt.
-The lyrics MUST follow this exact structure and format:
-- [verse]
-- [chorus]
-- [verse]
-- [chorus]
-- [bridge]
-- [outro]
-
-Each section should be separated by exactly two newlines (\n\n).
-Within each section, lines should be separated by a single newline (\n).
-Each section should be marked with its type in square brackets (e.g., [verse], [chorus], etc.).
-
-Example format:
-[verse]
-Line 1
-Line 2
-Line 3
-Line 4
-
-[chorus]
-Line 1
-Line 2
-Line 3
-Line 4
-
-[verse]
-...and so on.
-
-The lyrics should be creative, meaningful, and suitable for singing. Do not include any explanations or additional text - just the lyrics in the specified format."""
-
 # Default system prompt for genre extraction - starts blank
 DEFAULT_GENRE_PROMPT = "POP"
 
@@ -99,41 +67,32 @@ config_path = os.path.join(BASE_DIR, 'config.json')
 print(f"\nLooking for config file at: {config_path}")
 print(f"Config file exists: {os.path.exists(config_path)}")
 
-# Default provider is Anthropic
-lyrics_provider = "anthropic"
-google_api_key = None
-anthropic_api_key = None
+# Default provider is OpenAI
+lyrics_provider = "openai"
+openai_api_key = None
 
 if os.path.exists(config_path):
     print("Found config.json, attempting to read...")
     with open(config_path) as f:
         config = json.load(f)
-        google_api_key = config.get('google_api_key')
-        anthropic_api_key = config.get('anthropic_api_key')
-        lyrics_provider = config.get('lyrics_provider', 'anthropic').lower()
-        print(f"Google API key found in config: {'Yes' if google_api_key else 'No'}")
-        print(f"Anthropic API key found in config: {'Yes' if anthropic_api_key else 'No'}")
+        openai_api_key = config.get('openai_api_key')
+        lyrics_provider = config.get('lyrics_provider', 'openai').lower()
+        print(f"OpenAI API key found in config: {'Yes' if openai_api_key else 'No'}")
         print(f"Using lyrics provider: {lyrics_provider}")
 else:
     print("Config file not found, checking environment variables...")
-    google_api_key = os.getenv('GOOGLE_API_KEY')
-    anthropic_api_key = os.getenv('ANTHROPIC_API_KEY')
-    lyrics_provider = os.getenv('LYRICS_PROVIDER', 'anthropic').lower()
-    print(f"Google API key found in environment: {'Yes' if google_api_key else 'No'}")
-    print(f"Anthropic API key found in environment: {'Yes' if anthropic_api_key else 'No'}")
+    openai_api_key = os.getenv('OPENAI_API_KEY')
+    lyrics_provider = os.getenv('LYRICS_PROVIDER', 'openai').lower()
+    print(f"OpenAI API key found in environment: {'Yes' if openai_api_key else 'No'}")
     print(f"Using lyrics provider: {lyrics_provider}")
 
 # Initialize the appropriate lyrics generator
-if lyrics_provider == 'gemini':
-    if not google_api_key:
-        raise ValueError("Gemini provider selected but Google API key not found. Please set it in config.json or as GOOGLE_API_KEY environment variable.")
-    api_key = google_api_key
-elif lyrics_provider == 'anthropic':
-    if not anthropic_api_key:
-        raise ValueError("Anthropic provider selected but Anthropic API key not found. Please set it in config.json or as ANTHROPIC_API_KEY environment variable.")
-    api_key = anthropic_api_key
+if lyrics_provider == 'openai':
+    if not openai_api_key:
+        raise ValueError("OpenAI provider selected but OpenAI API key not found. Please set it in config.json or as OPENAI_API_KEY environment variable.")
+    api_key = openai_api_key
 else:
-    raise ValueError(f"Unsupported lyrics provider: {lyrics_provider}. Supported: 'gemini', 'anthropic'")
+    raise ValueError(f"Unsupported lyrics provider: {lyrics_provider}. Supported: 'openai'")
 
 print(f"Initializing {lyrics_provider} lyrics generator...")
 lyrics_generator = create_lyrics_generator(lyrics_provider, api_key)
@@ -188,8 +147,11 @@ def find_closest_genre(genre):
 
 def generate_lyrics_with_gemini(prompt):
     """Generate song lyrics using the configured lyrics generator based on the prompt"""
-    # Get the current lyrics prompt from file or use default
-    lyrics_prompt = lyrics_generator.read_lyrics_prompt(LYRICS_PROMPT_FILE, DEFAULT_LYRICS_PROMPT)
+    # Get the current lyrics prompt from file
+    lyrics_prompt = lyrics_generator.read_lyrics_prompt(LYRICS_PROMPT_FILE, "")
+    
+    if not lyrics_prompt.strip():
+        return "Error: No lyrics prompt found in file. Please create a lyrics prompt first."
     
     print("Starting lyrics generation...")
     try:
@@ -198,7 +160,7 @@ def generate_lyrics_with_gemini(prompt):
         return lyrics
     except Exception as e:
         print(f"Detailed error in lyrics generation: {str(e)}")
-        raise
+        return f"Error generating lyrics: {str(e)}"
 
 def extract_genre_from_prompt(prompt):
     """Extract or generate a suitable genre from the prompt using the configured generator"""
@@ -898,9 +860,9 @@ def generate_lyrics_by_genres():
 
 @app.route('/system_prompt', methods=['GET'])
 def get_system_prompt():
-    """Endpoint to get the default system prompt for lyrics generation"""
+    """Endpoint to get the system prompt for lyrics generation from file"""
     # Read from file each time using the lyrics generator helper
-    current_prompt = lyrics_generator.read_lyrics_prompt(LYRICS_PROMPT_FILE, DEFAULT_LYRICS_PROMPT)
+    current_prompt = lyrics_generator.read_lyrics_prompt(LYRICS_PROMPT_FILE, "")
     
     return jsonify({
         'prompt': current_prompt,
@@ -976,85 +938,111 @@ def update_genre_prompt():
 
 @app.route('/provider', methods=['GET'])
 def get_provider():
-    """Get the current lyrics provider"""
+    """Get current lyrics provider"""
     return jsonify({
         'provider': lyrics_provider,
-        'available_providers': ['gemini', 'anthropic']
+        'available_providers': ['openai']
     })
 
 @app.route('/provider', methods=['POST'])
 def set_provider():
-    """Set the lyrics provider to use"""
+    """Change lyrics provider"""
     global lyrics_provider, lyrics_generator
     
+    # Validate request
     if not request.is_json:
-        return jsonify({'error': 'Content-Type must be application/json'}), 400
+        return jsonify({'error': 'Missing JSON in request'}), 400
     
-    data = request.json
-    if 'provider' not in data:
-        return jsonify({'error': 'Missing required field: provider'}), 400
+    request_data = request.get_json()
     
-    new_provider = data['provider'].lower()
-    if new_provider not in ['gemini', 'anthropic']:
-        return jsonify({'error': 'Invalid provider. Supported providers: gemini, anthropic'}), 400
+    if 'provider' not in request_data:
+        return jsonify({'error': 'Missing provider in request'}), 400
     
-    # Verify we have the required API key
-    if new_provider == 'gemini' and not google_api_key:
+    new_provider = request_data['provider'].lower()
+    
+    # Validate provider
+    if new_provider not in ['openai']:
+        return jsonify({'error': 'Invalid provider. Supported providers: openai'}), 400
+        
+    # Check if API key is available
+    if new_provider == 'openai' and not openai_api_key:
         return jsonify({
-            'error': 'Cannot switch to Gemini: Google API key not configured',
-            'current_provider': lyrics_provider
+            'error': 'Cannot switch to OpenAI: OpenAI API key not configured',
+            'status': 'failed'
         }), 400
     
-    if new_provider == 'anthropic' and not anthropic_api_key:
-        return jsonify({
-            'error': 'Cannot switch to Anthropic: Anthropic API key not configured',
-            'current_provider': lyrics_provider
-        }), 400
-    
-    # If requested provider is already active, just return success
+    # If already using this provider, just return success
     if new_provider == lyrics_provider:
         return jsonify({
-            'message': f'Provider {new_provider} is already active',
-            'provider': new_provider
+            'provider': lyrics_provider,
+            'status': 'success',
+            'message': f'Already using {lyrics_provider} provider'
         })
     
+    # Otherwise, create a new generator with the new provider
     try:
-        # Get the appropriate API key
-        api_key = google_api_key if new_provider == 'gemini' else anthropic_api_key
+        # Set the API key based on the provider
+        api_key = openai_api_key
         
-        # Initialize the new provider
-        print(f"Switching lyrics provider from {lyrics_provider} to {new_provider}")
+        # Create new generator
         new_generator = create_lyrics_generator(new_provider, api_key)
         
-        # Update globals after successful initialization
+        # If successful, update globals
         lyrics_provider = new_provider
         lyrics_generator = new_generator
         
-        # Save the new provider to config file if it exists
-        try:
-            if os.path.exists(config_path):
-                with open(config_path, 'r') as f:
-                    config = json.load(f)
-                
-                config['lyrics_provider'] = new_provider
-                
-                with open(config_path, 'w') as f:
-                    json.dump(config, f, indent=2)
-                    print(f"Updated config file with new provider: {new_provider}")
-        except Exception as e:
-            print(f"Warning: Could not update config file: {e}")
-        
         return jsonify({
-            'message': f'Successfully switched provider to {new_provider}',
-            'provider': new_provider
+            'provider': lyrics_provider,
+            'status': 'success',
+            'message': f'Successfully switched to {lyrics_provider} provider'
         })
-    
     except Exception as e:
-        error_message = f'Error switching provider: {str(e)}'
+        return jsonify({
+            'error': f'Failed to initialize {new_provider} provider: {str(e)}',
+            'status': 'error'
+        }), 500
+
+@app.route('/infer_and_generate', methods=['POST'])
+def infer_and_generate():
+    """Endpoint to infer genres from a prompt and generate genre-specific lyrics without creating a music track"""
+    request_data = request.json
+    print(f"\n=== New infer and generate request ===")
+    print(f"Received request data: {json.dumps(request_data, indent=2)}")
+    
+    # Validate required fields
+    if 'prompt' not in request_data:
+        print(f"Error: Missing required field 'prompt' in request")
+        return jsonify({
+            'error': 'Missing required field: prompt'
+        }), 400
+    
+    try:
+        # Infer genres from the prompt
+        print("\nInferring genres from prompt...")
+        genres = infer_genres_from_prompt(request_data['prompt'])
+        print(f"Inferred genres: {genres}")
+        
+        # Generate lyrics based on inferred genres
+        print("\nGenerating lyrics with inferred genres...")
+        lyrics = generate_lyrics_with_genres(request_data['prompt'], genres)
+        print(f"Generated lyrics successfully")
+        
+        # Return the lyrics and inferred genres
+        response = {
+            'lyrics': lyrics,
+            'inferred_genres': genres,
+            'lyrics_provider': lyrics_provider
+        }
+        
+        print(f"\nResponse: {json.dumps(response, indent=2)}")
+        print(f"=== End of infer and generate request ===\n")
+        return jsonify(response), 200
+        
+    except Exception as e:
+        error_message = f'Error processing request: {str(e)}'
         print(f"Error: {error_message}")
         return jsonify({
-            'error': error_message,
-            'current_provider': lyrics_provider
+            'error': error_message
         }), 500
 
 if __name__ == '__main__':

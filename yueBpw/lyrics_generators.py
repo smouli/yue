@@ -26,7 +26,7 @@ class LyricsGenerator(abc.ABC):
         """Generate lyrics that incorporate elements from specified genres"""
         pass
     
-    def read_lyrics_prompt(self, file_path: str, default_prompt: str) -> str:
+    def read_lyrics_prompt(self, file_path: str, default_prompt: str = "") -> str:
         """Read lyrics prompt from file or return default
         
         Args:
@@ -106,196 +106,27 @@ class LyricsGenerator(abc.ABC):
             return False
 
 
-class GeminiLyricsGenerator(LyricsGenerator):
-    """Lyrics generator using Google's Gemini API"""
+class OpenAILyricsGenerator(LyricsGenerator):
+    """Lyrics generator using OpenAI API"""
     
-    def __init__(self, api_key: str, model_name: str = 'gemini-2.0-flash'):
-        """Initialize the Gemini lyrics generator
-        
-        Args:
-            api_key: Google API key
-            model_name: Gemini model name to use
-        """
-        import google.generativeai as genai
-        self.api_key = api_key
-        self.model_name = model_name
-        genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel(model_name)
-    
-    def generate_lyrics(self, prompt: str, lyrics_prompt: str = None) -> str:
-        """Generate lyrics using Gemini API
-        
-        Args:
-            prompt: User's prompt about the song
-            lyrics_prompt: System prompt for lyrics generation
-        
-        Returns:
-            Generated lyrics as a string
-        """
-        if not lyrics_prompt:
-            # Use a default prompt if not provided
-            lyrics_prompt = self._get_default_lyrics_prompt()
-        
-        try:
-            response = self.model.generate_content(
-                f"Prompt: {prompt}\n\n{lyrics_prompt}"
-            )
-            return response.text
-        except Exception as e:
-            print(f"Error in Gemini lyrics generation: {str(e)}")
-            raise
-    
-    def extract_genre(self, prompt: str, genre_prompt: str = None) -> str:
-        """Extract a genre from the prompt using Gemini
-        
-        Args:
-            prompt: User's prompt about the song
-            genre_prompt: Custom system prompt for genre extraction
-        
-        Returns:
-            Extracted genre as a string
-        """
-        base_prompt = """Based on the given prompt, determine the most suitable musical genre for the song.
-        Respond with just a single word genre (e.g., 'rock', 'pop', 'jazz', 'hiphop', 'blues', etc.).
-        Do not include any explanations or additional text."""
-        
-        combined_prompt = base_prompt
-        if genre_prompt and genre_prompt.strip():
-            combined_prompt = f"{base_prompt}\n\n{genre_prompt}"
-        
-        try:
-            response = self.model.generate_content(
-                f"Prompt: {prompt}\n\n{combined_prompt}"
-            )
-            return response.text.strip().lower()
-        except Exception as e:
-            print(f"Error in Gemini genre extraction: {str(e)}")
-            raise
-    
-    def infer_genres(self, prompt: str) -> List[str]:
-        """Infer multiple suitable genres from the prompt using Gemini
-        
-        Args:
-            prompt: User's prompt about the song
-        
-        Returns:
-            List of inferred genres
-        """
-        system_prompt = """As a music expert, analyze the given prompt and suggest 2-3 most suitable musical genres that would work well together.
-        Consider:
-        1. The theme and mood of the prompt
-        2. Common genre combinations in modern music
-        3. Musical compatibility between genres
-        
-        Respond with ONLY a comma-separated list of genres (e.g., 'rock, electronic, indie').
-        Do not include any explanations or additional text."""
-        
-        try:
-            response = self.model.generate_content(
-                f"Prompt: {prompt}\n\n{system_prompt}"
-            )
-            return [g.strip().lower() for g in response.text.split(',')]
-        except Exception as e:
-            print(f"Error in Gemini genre inference: {str(e)}")
-            raise
-    
-    def generate_lyrics_with_genres(self, prompt: str, genres: List[str]) -> str:
-        """Generate lyrics that incorporate elements from specified genres
-        
-        Args:
-            prompt: User's prompt about the song
-            genres: List of genres to incorporate in the lyrics
-        
-        Returns:
-            Generated lyrics as a string
-        """
-        system_prompt = f"""You are a professional songwriter. Generate song lyrics based on the given prompt that incorporate elements from the following genres: {', '.join(genres)}.
-        The lyrics MUST follow this exact structure and format:
-        - [verse]
-        - [chorus]
-        - [verse]
-        - [chorus]
-        - [bridge]
-        - [outro]
-
-        Each section should be separated by exactly two newlines (\n\n).
-        Within each section, lines should be separated by a single newline (\n).
-        Each section should be marked with its type in square brackets (e.g., [verse], [chorus], etc.).
-        
-        The lyrics should:
-        1. Include typical elements, themes, and style from the specified genres
-        2. Use appropriate vocabulary and metaphors common in these genres
-        3. Follow common rhyme patterns for these genres
-        4. Maintain appropriate tone and mood for these genres
-        
-        Do not include any explanations or additional text - just the lyrics in the specified format."""
-        
-        try:
-            response = self.model.generate_content(
-                f"Prompt: {prompt}\n\n{system_prompt}"
-            )
-            return response.text
-        except Exception as e:
-            print(f"Error in Gemini genre-specific lyrics generation: {str(e)}")
-            raise
-    
-    def _get_default_lyrics_prompt(self) -> str:
-        """Returns the default system prompt for lyrics generation"""
-        return """You are a professional songwriter. Generate song lyrics based on the given prompt.
-        The lyrics MUST follow this exact structure and format:
-        - [verse]
-        - [chorus]
-        - [verse]
-        - [chorus]
-        - [bridge]
-        - [outro]
-
-        Each section should be separated by exactly two newlines (\n\n).
-        Within each section, lines should be separated by a single newline (\n).
-        Each section should be marked with its type in square brackets (e.g., [verse], [chorus], etc.).
-
-        Example format:
-        [verse]
-        Line 1
-        Line 2
-        Line 3
-        Line 4
-
-        [chorus]
-        Line 1
-        Line 2
-        Line 3
-        Line 4
-
-        [verse]
-        ...and so on.
-
-        The lyrics should be creative, meaningful, and suitable for singing. Do not include any explanations or additional text - just the lyrics in the specified format."""
-
-
-class AnthropicLyricsGenerator(LyricsGenerator):
-    """Lyrics generator using Anthropic's Claude API"""
-    
-    # Latest models to try in order
+    # Default models to try in order
     FALLBACK_MODELS = [
-        "claude-3-7-sonnet-20250219",
-        "claude-3-5-sonnet-20240620",
-        "claude-3-5-sonnet", 
-        "claude-3-sonnet",
-        "claude-3-haiku",
-        "claude-instant"
+        "gpt-4o",
+        "gpt-4-turbo",
+        "gpt-4",
+        "gpt-3.5-turbo"
     ]
     
     def __init__(self, api_key: str, model_name: str = None):
-        """Initialize the Anthropic lyrics generator
+        """Initialize the OpenAI lyrics generator
         
         Args:
-            api_key: Anthropic API key
-            model_name: Claude model name to use
+            api_key: OpenAI API key
+            model_name: OpenAI model name to use
         """
-        import anthropic
+        import openai
         self.api_key = api_key
-        self.client = anthropic.Anthropic(api_key=api_key)
+        self.client = openai.OpenAI(api_key=api_key)
         
         # Try to find a working model
         self.model_name = model_name if model_name else self.FALLBACK_MODELS[0]
@@ -319,11 +150,13 @@ class AnthropicLyricsGenerator(LyricsGenerator):
         for model in models_to_try:
             try:
                 # Simple test message to check if model exists
-                message = self.client.messages.create(
+                message = self.client.chat.completions.create(
                     model=model,
                     max_tokens=10,
-                    system="Reply with 'OK'",
-                    messages=[{"role": "user", "content": "test"}]
+                    messages=[
+                        {"role": "system", "content": "Reply with 'OK'"},
+                        {"role": "user", "content": "test"}
+                    ]
                 )
                 working_model = model
                 print(f"Successfully validated model: {model}")
@@ -337,10 +170,10 @@ class AnthropicLyricsGenerator(LyricsGenerator):
             self.model_name = working_model
         else:
             error_detail = "\n".join(errors)
-            raise ValueError(f"Could not find a working Claude model. Errors:\n{error_detail}")
+            raise ValueError(f"Could not find a working OpenAI model. Errors:\n{error_detail}")
     
     def generate_lyrics(self, prompt: str, lyrics_prompt: str = None) -> str:
-        """Generate lyrics using Claude API
+        """Generate lyrics using OpenAI API
         
         Args:
             prompt: User's prompt about the song
@@ -354,21 +187,21 @@ class AnthropicLyricsGenerator(LyricsGenerator):
             lyrics_prompt = self._get_default_lyrics_prompt()
         
         try:
-            message = self.client.messages.create(
+            response = self.client.chat.completions.create(
                 model=self.model_name,
                 max_tokens=1024,
-                system=lyrics_prompt,
                 messages=[
+                    {"role": "system", "content": lyrics_prompt},
                     {"role": "user", "content": f"Prompt: {prompt}"}
                 ]
             )
-            return message.content[0].text
+            return response.choices[0].message.content
         except Exception as e:
-            print(f"Error in Claude lyrics generation: {str(e)}")
+            print(f"Error in OpenAI lyrics generation: {str(e)}")
             raise
     
     def extract_genre(self, prompt: str, genre_prompt: str = None) -> str:
-        """Extract a genre from the prompt using Claude
+        """Extract a genre from the prompt using OpenAI
         
         Args:
             prompt: User's prompt about the song
@@ -386,21 +219,21 @@ class AnthropicLyricsGenerator(LyricsGenerator):
             combined_prompt = f"{base_prompt}\n\n{genre_prompt}"
         
         try:
-            message = self.client.messages.create(
+            response = self.client.chat.completions.create(
                 model=self.model_name,
                 max_tokens=50,
-                system=combined_prompt,
                 messages=[
+                    {"role": "system", "content": combined_prompt},
                     {"role": "user", "content": f"Prompt: {prompt}"}
                 ]
             )
-            return message.content[0].text.strip().lower()
+            return response.choices[0].message.content.strip().lower()
         except Exception as e:
-            print(f"Error in Claude genre extraction: {str(e)}")
+            print(f"Error in OpenAI genre extraction: {str(e)}")
             raise
     
     def infer_genres(self, prompt: str) -> List[str]:
-        """Infer multiple suitable genres from the prompt using Claude
+        """Infer multiple suitable genres from the prompt using OpenAI
         
         Args:
             prompt: User's prompt about the song
@@ -418,17 +251,17 @@ class AnthropicLyricsGenerator(LyricsGenerator):
         Do not include any explanations or additional text."""
         
         try:
-            message = self.client.messages.create(
+            response = self.client.chat.completions.create(
                 model=self.model_name,
                 max_tokens=100,
-                system=system_prompt,
                 messages=[
+                    {"role": "system", "content": system_prompt},
                     {"role": "user", "content": f"Prompt: {prompt}"}
                 ]
             )
-            return [g.strip().lower() for g in message.content[0].text.split(',')]
+            return [g.strip().lower() for g in response.choices[0].message.content.split(',')]
         except Exception as e:
-            print(f"Error in Claude genre inference: {str(e)}")
+            print(f"Error in OpenAI genre inference: {str(e)}")
             raise
     
     def generate_lyrics_with_genres(self, prompt: str, genres: List[str]) -> str:
@@ -463,17 +296,17 @@ class AnthropicLyricsGenerator(LyricsGenerator):
         Do not include any explanations or additional text - just the lyrics in the specified format."""
         
         try:
-            message = self.client.messages.create(
+            response = self.client.chat.completions.create(
                 model=self.model_name,
                 max_tokens=1024,
-                system=system_prompt,
                 messages=[
+                    {"role": "system", "content": system_prompt},
                     {"role": "user", "content": f"Prompt: {prompt}"}
                 ]
             )
-            return message.content[0].text
+            return response.choices[0].message.content
         except Exception as e:
-            print(f"Error in Claude genre-specific lyrics generation: {str(e)}")
+            print(f"Error in OpenAI genre-specific lyrics generation: {str(e)}")
             raise
     
     def _get_default_lyrics_prompt(self) -> str:
@@ -510,11 +343,11 @@ class AnthropicLyricsGenerator(LyricsGenerator):
         The lyrics should be creative, meaningful, and suitable for singing. Do not include any explanations or additional text - just the lyrics in the specified format."""
 
 
-def create_lyrics_generator(provider: str = 'anthropic', api_key: str = None, model_name: Optional[str] = None) -> LyricsGenerator:
+def create_lyrics_generator(provider: str = 'openai', api_key: str = None, model_name: Optional[str] = None) -> LyricsGenerator:
     """Factory function to create the appropriate lyrics generator
     
     Args:
-        provider: Provider name ('gemini' or 'anthropic'), defaults to 'anthropic'
+        provider: Provider name (only 'openai' supported), defaults to 'openai'
         api_key: API key for the selected provider
         model_name: Optional model name (uses default if not specified)
     
@@ -523,11 +356,8 @@ def create_lyrics_generator(provider: str = 'anthropic', api_key: str = None, mo
     """
     provider = provider.lower()
     
-    if provider == 'gemini':
-        model = model_name if model_name else 'gemini-2.0-flash'
-        return GeminiLyricsGenerator(api_key, model)
-    elif provider == 'anthropic':
-        # For Anthropic, we let the class handle model selection with fallbacks
-        return AnthropicLyricsGenerator(api_key, model_name)
+    if provider == 'openai':
+        # For OpenAI, we let the class handle model selection with fallbacks
+        return OpenAILyricsGenerator(api_key, model_name)
     else:
-        raise ValueError(f"Unsupported provider: {provider}. Supported: 'gemini', 'anthropic'") 
+        raise ValueError(f"Unsupported provider: {provider}. Supported: 'openai'") 
