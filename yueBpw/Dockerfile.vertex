@@ -1,0 +1,69 @@
+# Use NVIDIA CUDA base image for GPU support on Vertex AI
+FROM gcr.io/deeplearning-platform-release/pytorch-gpu.2-1
+
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies including Google Cloud SDK
+RUN apt-get update && apt-get install -y \
+    python3 \
+    python3-pip \
+    python3-dev \
+    git \
+    wget \
+    curl \
+    build-essential \
+    ffmpeg \
+    gnupg \
+    lsb-release \
+    && rm -rf /var/lib/apt/lists/*
+
+# Google Cloud SDK is already installed in the base image
+# Just ensure it's up to date
+RUN gcloud --version
+
+# Set Python3 as default python
+RUN ln -s /usr/bin/python3 /usr/bin/python
+
+# Copy requirements and install dependencies
+COPY requirements.txt /app/requirements.txt
+RUN pip install --no-cache-dir -r /app/requirements.txt
+
+# Copy application code (excluding model weights)
+COPY Server /app/Server
+COPY YuE-exllamav2 /app/YuE-exllamav2
+
+# Copy the model download scripts
+COPY scripts/download_models.py /app/scripts/download_models.py
+COPY scripts/download_models_hf.py /app/scripts/download_models_hf.py
+
+# Set environment variables
+ENV PYTHONPATH=/app/YuE-exllamav2/src:/app/Server:$PYTHONPATH
+ENV FLASK_APP=/app/Server/server.py
+ENV FLASK_ENV=production
+ENV MODEL_BUCKET_NAME=""
+ENV GOOGLE_CLOUD_PROJECT=""
+
+# Create necessary directories
+RUN mkdir -p /app/YuE-exllamav2/output
+RUN mkdir -p /app/Server/logs
+RUN mkdir -p /app/YuE-exllamav2/src/yue/models
+
+# Set proper permissions
+RUN chmod +x /app/Server/server.py
+RUN chmod +x /app/scripts/download_models.py
+RUN chmod +x /app/scripts/download_models_hf.py
+
+# Expose the Flask port
+EXPOSE 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# Create startup script that downloads models and starts server
+COPY scripts/vertex_startup.sh /app/vertex_startup.sh
+RUN chmod +x /app/vertex_startup.sh
+
+# Use the startup script as the entry point
+CMD ["/app/vertex_startup.sh"] 

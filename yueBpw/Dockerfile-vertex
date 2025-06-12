@@ -1,0 +1,5 @@
+# Copy local model weights if they exist (to avoid GCS dependency)
+# Uncomment the next 3 lines to embed models directly in container:
+# COPY ~/.cache/huggingface/hub/models--m-a-p--YuE-s1-7B-anneal-en-cot/blobs /app/YuE-exllamav2/src/yue/models/models--m-a-p--YuE-s1-7B-anneal-en-cot/blobs/
+# COPY ~/.cache/huggingface/hub/models--m-a-p--YuE-s1-7B-anneal-en-cot/snapshots /app/YuE-exllamav2/src/yue/models/models--m-a-p--YuE-s1-7B-anneal-en-cot/snapshots/
+# ENV SKIP_MODEL_DOWNLOAD=true 

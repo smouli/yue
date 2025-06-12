@@ -1,0 +1,86 @@
+# Git (including nested git repos)
+.git
+**/.git
+.gitignore
+.gitattributes
+*.lfs
+*.lfsconfig
+# Docker files
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+
+# Logs
+*.log
+logs/
+Server/logs/
+Server/*.log
+Server/*.err
+YuE-exllamav2/*.log
+
+
+# Ignore model folders and weights (we download from GCS)
+models/
+checkpoints/
+weights/
+
+# Exclude large model files specifically
+YuE-exllamav2/src/yue/models_backup/
+YuE-exllamav2/src/yue/models/models--*
+YuE-exllamav2/src/yue/models/YuE-s1-7B-anneal-en-cot
+YuE-exllamav2/src/yue/models/YuE-s2-1B-general
+YuE-exllamav2/output/
+**/models--m-a-p--*
+**/blobs/
+**/snapshots/
+*.safetensors
+*.bin
+*.wav
+*.mp3
+*.flac
+# Exclude HuggingFace cache if accidentally copied
+**/.cache/
+**/huggingface/
+
+# Exclude the entire xcodec directory with large model files
+YuE-exllamav2/xcodec_mini_infer/
+
+
+# Output directories (will be mounted as volumes)
+output/
+YuE-exllamav2/output/
+**/output/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment files
+.env
+.env.local
+
+# Temporary files
+tmp/
+temp/
+
+# Large result files
+Server/results.json
+
+# Service files (Linux specific)
+*.service
+install-*.sh 
