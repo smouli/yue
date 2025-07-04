@@ -1,65 +1,43 @@
-# Git (including nested git repos)
-.git
-**/.git
-.gitignore
-.gitattributes
-*.lfs
-*.lfsconfig
-# Docker files
-Dockerfile
-docker-compose.yml
-.dockerignore
+# Exclude large model directories and files to reduce Docker image size
+# Models will be downloaded at runtime from GCS instead
+# BUT keep xcodec_mini_infer as it's essential for audio generation
 
-# Python cache
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
-*.so
+# Large YuE model directories (downloaded from GCS at runtime)
+**/YuE-s1-*
+**/YuE-s2-*
+**/models/YuE-*
+**/*YuE-s*
 
-# Logs
-*.log
-logs/
-Server/logs/
-Server/*.log
-Server/*.err
-YuE-exllamav2/*.log
+# Keep xcodec_mini_infer - essential for converting tokens to audio
+# !**/xcodec_mini_infer/
 
-
-# Ignore model folders and weights (we download from GCS)
-models/
-checkpoints/
-weights/
-
-# Exclude large model files specifically
-YuE-exllamav2/src/yue/models_backup/
-YuE-exllamav2/src/yue/models/models--*
-YuE-exllamav2/src/yue/models/YuE-s1-7B-anneal-en-cot
-YuE-exllamav2/src/yue/models/YuE-s2-1B-general
-YuE-exllamav2/output/
-**/models--m-a-p--*
-**/blobs/
-**/snapshots/
-*.safetensors
+# Large model files (except those needed for xcodec)
 *.bin
-*.wav
-*.mp3
-*.flac
-# Exclude HuggingFace cache if accidentally copied
+*.safetensors
+# Keep .pth files in xcodec_mini_infer
+!xcodec_mini_infer/**/*.pth
+!**/xcodec_mini_infer/**/*.pth
+
+# Cache and temporary directories
 **/.cache/
-**/huggingface/
+**/cache/
+**/__pycache__/
+**/.pytest_cache/
+**/tmp/
+**/temp/
 
-# Exclude the entire xcodec directory with large model files
-YuE-exllamav2/xcodec_mini_infer/
-
-
-# Output directories (will be mounted as volumes)
-output/
-YuE-exllamav2/output/
+# Output directories with generated content (can be large)
 **/output/
+**/outputs/
 
-# IDE files
+# Git and development files
+.git/
+.gitignore
+*.md
+LICENSE
+NOTICE
+
+# IDE and editor files
 .vscode/
 .idea/
 *.swp
@@ -70,17 +48,22 @@ YuE-exllamav2/output/
 .DS_Store
 Thumbs.db
 
-# Environment files
-.env
-.env.local
+# Python bytecode
+*.pyc
+*.pyo
+*.pyd
 
-# Temporary files
-tmp/
-temp/
+# Logs
+*.log
+**/logs/
 
-# Large result files
-Server/results.json
+# Test files
+test_*.py
+*_test.py
+tests/
 
-# Service files (Linux specific)
-*.service
-install-*.sh 
+# Documentation
+docs/
+README*
+CHANGELOG*
+HISTORY* 

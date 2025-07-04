@@ -1,0 +1,10 @@
+{
+  "instances": [
+    {
+      "user_id": "test_user_import_fix",
+      "song_name": "Import Error Fixed Test",
+      "genre": "pop",
+      "lyrics": "Dancing through the night, feeling so free, music in my heart, this is where I want to be"
+    }
+  ]
+}

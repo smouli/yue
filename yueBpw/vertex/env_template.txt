@@ -1,0 +1,29 @@
+# GCS HMAC Credentials Template
+# Copy these variables to your environment or .env file
+
+# HMAC Access Key and Secret (from create_hmac_key.sh output)
+export GCS_HMAC_ACCESS_KEY_ID="YOUR_ACCESS_KEY_HERE"
+export GCS_HMAC_SECRET_ACCESS_KEY="YOUR_SECRET_KEY_HERE"
+
+# GCS Configuration
+export GCS_BUCKET_NAME="yue-generated-songs"
+export GCS_ENDPOINT_URL="https://storage.googleapis.com"
+export GCS_REGION="us-central1"
+
+# Project Configuration
+export GOOGLE_CLOUD_PROJECT="music-generation-prototype"
+
+# Optional: Service Account Email (for reference)
+export GCS_SERVICE_ACCOUNT_EMAIL="yue-gcs-hmac@music-generation-prototype.iam.gserviceaccount.com"
+
+# Security Notes:
+# - Never commit credentials to version control
+# - Keep these credentials secure
+# - Rotate keys periodically
+# - Use different keys for different environments (dev/staging/prod)
+
+# Usage:
+# 1. Copy this template to a secure location
+# 2. Replace YOUR_ACCESS_KEY_HERE and YOUR_SECRET_KEY_HERE with actual values
+# 3. Source the file: source your_env_file.sh
+# 4. Or add to your ~/.bashrc or deployment scripts 

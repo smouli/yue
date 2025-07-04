@@ -1,0 +1,86 @@
+# Ignore Git directories and files
+.git/
+.gitignore
+.gitattributes
+
+# Ignore Python cache and build files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Ignore virtual environments
+venv/
+env/
+ENV/
+.venv/
+.env/
+
+# Ignore IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Ignore logs and temporary files
+*.log
+logs/
+vertex/logs/
+vertex/deploy_output.log
+
+# Ignore test files and scripts (keep only essential ones)
+vertex/test_*.py
+vertex/test_*.sh
+vertex/monitor_*.sh
+vertex/validate_*.sh
+vertex/fix_*.sh
+vertex/run_*.sh
+vertex/view_*.sh
+
+# Ignore large model files and outputs
+YuE-exllamav2/output/
+YuE-exllamav2/.git/
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.ckpt
+
+# Ignore Docker build cache
+.dockerignore
+
+# Ignore backup files
+*.bak
+*.backup
+*.old
+
+# Keep only essential files for deployment
+!vertex/Dockerfile
+!vertex/server.py
+!vertex/startup.sh
+!vertex/cloudbuild.yaml
+!vertex/vertex_config.yaml
+!vertex/wsgi.py
+!vertex/__init__.py
+!requirements.txt
+!scripts/
+!YuE-exllamav2/src/
+!YuE-exllamav2/requirements.txt
+!YuE-exllamav2/top_200_tags.json 

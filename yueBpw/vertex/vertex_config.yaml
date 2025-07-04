@@ -1,0 +1,172 @@
+# Vertex AI Optimization Configuration
+# Optimized for ML workloads with warm model instances
+
+deployment:
+  # === SCALING CONFIGURATION ===
+  # Keep at least 1 instance warm at all times to avoid cold starts
+  min_replica_count: 1  # Always 1 warm instance (eliminates cold start latency)
+  max_replica_count: 8  # Scale up to 8 instances for high demand
+  
+  # Scaling thresholds - when to scale up/down
+  target_utilization: 70  # Scale up when 70% CPU/memory utilized
+  scale_up_delay: 120     # Wait 2 min before scaling up (model loading time)
+  scale_down_delay: 600   # Wait 10 min before scaling down (keep warm longer)
+  
+  # === MACHINE CONFIGURATION ===
+  # Isolated single-GPU instances for maximum throughput
+  machine_type: "a2-highgpu-1g"  # 12 vCPUs, 85GB RAM, 1x A100 GPU
+  accelerator:
+    count: 1
+    type: "nvidia-tesla-a100"
+  
+  # === TIMEOUT CONFIGURATION ===
+  # Extended timeouts for model loading and inference
+  timeout: 3600  # 1 hour total timeout
+  startup_timeout: 1800  # 30 minutes for startup (model loading)
+  
+  # Keep connections alive longer for batch processing
+  keep_alive: 600  # 10 minutes
+
+# === GUNICORN WORKER CONFIGURATION ===
+gunicorn:
+  # Single worker per instance to keep models in memory
+  workers: 1
+  
+  # Extended timeout for ML inference
+  timeout: 3600  # 1 hour for long inference jobs
+  
+  # Keep connections alive for streaming
+  keep_alive: 600  # 10 minutes
+  
+  # Worker lifecycle management
+  max_requests: 100       # Process 100 requests before recycling worker
+  max_requests_jitter: 10 # Add randomness to prevent thundering herd
+  
+  # Preload app to initialize models once per worker
+  preload: true
+  
+  # Memory management
+  worker_tmp_dir: "/dev/shm"  # Use shared memory for temp files
+
+# === MODEL OPTIMIZATION ===
+model_optimization:
+  # Memory management
+  cache_models: true
+  device_map: "auto"
+  torch_dtype: "float16"  # Use half precision for memory efficiency
+  
+  # CUDA optimizations
+  attn_implementation: "flash_attention_2"  # Use FlashAttention v2
+  torch_compile: false  # Disable for stability with A100
+  
+  # Memory cleanup
+  enable_gc_after_inference: true
+  cuda_empty_cache: true
+  max_memory_usage_gb: 80  # Leave 5GB for system
+
+# === WARM INSTANCE STRATEGY ===
+warm_instances:
+  # Health check configuration
+  health_check_interval: 30     # Check every 30 seconds
+  health_check_timeout: 10      # 10 second timeout
+  health_check_retries: 3       # 3 retries before marking unhealthy
+  
+  # Warmup strategy
+  warmup_requests: 1            # Send 1 warmup request after startup
+  warmup_timeout: 300           # 5 minutes to complete warmup
+  
+  # Keep-alive strategy
+  min_idle_time: 600           # Keep instances idle for 10 minutes
+  ping_interval: 120           # Ping idle instances every 2 minutes
+
+# === LOGGING AND MONITORING ===
+logging:
+  # Structured logging for Cloud Logging
+  format: "json"
+  level: "INFO"
+  
+  # Log aggregation
+  buffer_size: 1000
+  flush_interval: 5
+  
+  # Performance monitoring
+  log_request_timing: true
+  log_memory_usage: true
+  log_gpu_utilization: true
+
+# === STORAGE CONFIGURATION ===
+storage:
+  # GCS configuration
+  bucket_name: "yue-generated-songs"
+  upload_timeout: 600       # 10 minutes for large audio files
+  retry_attempts: 3
+  retry_delay: 2
+  
+  # Authentication and metadata server configuration
+  auth_retries: 5           # Retry metadata server calls 5 times
+  auth_timeout: 30          # 30 second timeout for auth calls
+  metadata_server_timeout: 15  # Specific timeout for 169.254.169.254
+  
+  # Local storage optimization
+  temp_dir: "/dev/shm"      # Use shared memory for temp files
+  cleanup_after_upload: true
+
+# === COST OPTIMIZATION ===
+costs:
+  # Estimated costs for optimized deployment
+  base_cost_per_hour: 3.67           # A100 cost per hour
+  min_monthly_cost: 2642.40          # 1 GPU always on (24/7 * 30 * $3.67)
+  max_monthly_cost: 21139.20         # 8 GPUs always on
+  
+  # Cost management
+  cost_optimization: true
+  auto_shutdown_unused: false        # Keep at least 1 warm
+  billing_alerts_enabled: true
+  
+  # Efficiency metrics
+  avg_inference_time_seconds: 120    # 2 minutes per song
+  requests_per_hour_per_gpu: 30      # 30 songs per hour per GPU
+  cost_per_inference: 0.12           # ~12 cents per song
+
+# === TRAFFIC PATTERNS ===
+traffic:
+  # Expected usage patterns
+  peak_hours: ["09:00-12:00", "14:00-18:00", "20:00-23:00"]  # UTC
+  low_traffic_hours: ["00:00-06:00"]
+  
+  # Scaling behavior
+  scale_up_aggressively: true        # Scale up quickly for user experience
+  scale_down_conservatively: true    # Scale down slowly to keep warm
+  
+  # Request characteristics
+  avg_request_duration: 120         # 2 minutes average
+  max_concurrent_requests: 8        # 1 per instance
+  queue_max_size: 50               # Max queued requests
+
+# === RELIABILITY ===
+reliability:
+  # Health monitoring
+  health_check_enabled: true
+  readiness_check_enabled: true
+  liveness_check_enabled: true
+  
+  # Failure handling
+  max_failures_per_hour: 5
+  circuit_breaker_enabled: true
+  
+  # Recovery
+  auto_restart_on_failure: true
+  graceful_shutdown_timeout: 300    # 5 minutes for graceful shutdown
+
+# === AUTHENTICATION CONFIGURATION ===
+authentication:
+  # Service account configuration for Vertex AI
+  use_default_credentials: true
+  retry_metadata_server: true
+  metadata_server_retries: 5
+  metadata_server_timeout: 30
+  exponential_backoff: true
+  
+  # Fallback strategies
+  enable_local_fallback: true
+  continue_without_gcs: true 

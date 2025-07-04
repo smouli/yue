@@ -1,0 +1,5 @@
+# Secure API Docker Ignore - separate from main YuE deployment
+*
+!secure_api_server.py
+!secure_api_requirements.txt
+!Dockerfile.secure-api

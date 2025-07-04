@@ -1,0 +1,29 @@
+# Environment variables with sensitive credentials
+.env
+.env.local
+.env.*.local
+
+# Files with sensitive information or credentials
+vertex/hmac_key_setup_guide.md
+vertex/test_hmac_key.py
+
+# Logs
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Local development
+.vscode/
+.idea/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db 

@@ -1,0 +1,58 @@
+# Exclude model weights and large files from Docker build context
+# YuE-exllamav2/src/yue/models/  # REMOVED - was excluding Python files too!
+YuE-exllamav2/src/yue/models/YuE-s1-7B-anneal-en-cot/
+YuE-exllamav2/src/yue/models/YuE-s2-1B-general/
+YuE-exllamav2/output/
+# Exclude large model files but allow audio codec files
+YuE-exllamav2/src/yue/models/**/*.bin
+YuE-exllamav2/src/yue/models/**/*.safetensors
+YuE-exllamav2/src/yue/models/**/*.gguf
+YuE-exllamav2/src/yue/models/**/*.pth
+YuE-exllamav2/src/yue/models/**/*.pt
+# Allow xcodec_mini_infer files (needed for postprocessing)
+!YuE-exllamav2/xcodec_mini_infer/**/*.bin
+
+# Build artifacts
+build_*.log
+deployment.log
+logs/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Backup files
+deploy_old_backup.sh
+yue_requirements_*.txt 
